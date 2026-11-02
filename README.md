@@ -64,6 +64,10 @@ python src/evaluate.py   # grafik & metrik -> hasil/
 
 Bobot model terlatih tersedia di `model/resnet1d_best.pt` (normalisasi per sadapan di `model/norm.npz`).
 
+## Versi web (tanpa Python)
+
+`web/index.html` menjalankan model yang sama langsung di browser (JavaScript murni, bobot float16 tertanam, tanpa server). Buka file itu, atau aktifkan GitHub Pages dari folder `web/`. Unggah CSV EKG, pilih frekuensi sampling, dan hasil keluar dalam ±0,3 detik per 10 detik rekaman. Data tidak dikirim ke mana pun. Hasilnya identik dengan `predict.py` (selisih ≤ 0,001).
+
 ## Prediksi dari EKG sendiri
 
 ```bash
@@ -100,6 +104,7 @@ Contoh input siap pakai ada di `contoh/` (EKG dari set uji PTB-XL: normal, MI, S
 ```
 src/        skrip preprocessing, pelatihan, evaluasi, prediksi (predict.py)
 contoh/     contoh input CSV
+web/        versi browser (index.html) + mesin inferensi JS (engine.js)
 notebook/   notebook lengkap siap-Colab (penjelasan Bahasa Indonesia)
 model/      bobot CNN terlatih, parameter normalisasi, ambang per kelas
 hasil/      kurva ROC, saliency, kurva pelatihan, metrik JSON, log
