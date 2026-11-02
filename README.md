@@ -2,7 +2,7 @@
 
 Sistem interpretasi EKG 12 sadapan berbasis dataset **PTB-XL**: perbandingan *machine learning* klasik vs *deep learning* (1D ResNet), model multi-tugas 58 label (5 superclass + 53 kode SCP-ECG), pengukuran berbasis aturan, laporan 8 kategori, aplikasi web, uji eksternal, dan digitalisasi EKG dari gambar.
 
-Proyek pendamping makalah *"Pemanfaatan Machine Learning, Deep Learning, dan Large Language Model dalam Interpretasi Elektrokardiogram (EKG)"* — Muhammad Affan Hassya Purnomo, FK UNS. Makalah lengkap (BAB IV membahas implementasi ini): [`docs/makalah_ai_ekg.pdf`](docs/makalah_ai_ekg.pdf).
+Proyek pendamping makalah *"Pemanfaatan Machine Learning, Deep Learning, dan Large Language Model dalam Interpretasi Elektrokardiogram (EKG)"* — Muhammad Affan Hassya Purnomo, FK UNS. Makalah lengkap (BAB IV–V membahas metode dan hasil implementasi ini): [`docs/makalah_ai_ekg.pdf`](docs/makalah_ai_ekg.pdf). Dokumentasi pelatihan langkah demi langkah (dataset, pra-pemrosesan, arsitektur, hiperparameter, kurva pelatihan, reproduksi): [`docs/TRAINING.md`](docs/TRAINING.md).
 
 > Model ini untuk pembelajaran, **bukan** alat diagnosis klinis.
 
@@ -154,6 +154,8 @@ python src/prep.py       # -> data/ptbxl100.npz
 python src/train_ml.py   # baseline ML klasik
 python src/train_dl.py   # CNN (±30 menit di CPU 2 core, beberapa menit di GPU)
 python src/evaluate.py   # grafik & metrik -> hasil/
+python src/train_full.py      # model 58 label (±25 menit di CPU)
+python src/finalize_full.py   # ambang minimum 0,10 + metrik -> model/labels.json
 ```
 
 Bobot model terlatih tersedia di `model/resnet1d_best.pt` (normalisasi per sadapan di `model/norm.npz`).
@@ -199,7 +201,7 @@ Contoh input siap pakai ada di `contoh/` (EKG dari set uji PTB-XL: normal, MI, S
 src/        preprocessing, pelatihan, evaluasi, prediksi (predict.py), pengukuran (measure.py), laporan 8 kategori (report.py)
 contoh/     contoh input CSV (PTB-XL) + digitasi/ (EKG hasil digitalisasi gambar)
 tools/      digitalisasi EKG dari gambar (digitize.py, build_csv.py)
-docs/       makalah lengkap (PDF)
+docs/       makalah lengkap (PDF) + dokumentasi pelatihan (TRAINING.md)
 web/        versi browser (index.html, mandiri) + sumber JS: engine.js (model), measure.js (pengukuran), report.js (laporan)
 notebook/   notebook lengkap siap-Colab (penjelasan Bahasa Indonesia)
 model/      bobot CNN 5 kelas + model lengkap 58 label (resnet1d_full.pt, labels.json berisi ambang & metrik uji)
