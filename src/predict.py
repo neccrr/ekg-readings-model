@@ -63,7 +63,7 @@ def load_signal(path, fs=None):
         rec = wfdb.rdrecord(path.removesuffix('.hea').removesuffix('.dat'))
         sig, names, fs = rec.p_signal, [n.upper() for n in rec.sig_name], fs or rec.fs
     if sig.ndim != 2 or 12 not in sig.shape:
-        sys.exit(f'Butuh 12 sadapan, didapat bentuk {sig.shape}.')
+        raise ValueError(f'Butuh 12 sadapan, didapat bentuk {sig.shape}.')
     if sig.shape[1] != 12:
         sig = sig.T
     if names and set(LEADS) <= set(names):
@@ -75,41 +75,34 @@ def load_signal(path, fs=None):
 
 def windows(sig, fs):
     if fs != FS_MODEL:
-        fr = Fraction(FS_MODEL, int(round(fs))).limit_denominator(100)
+        fr = Fraction(FS_MODEL, int(round(fs))).limit_denominator(10000)
         sig = resample_poly(sig, fr.numerator, fr.denominator, axis=0)
     sig = np.nan_to_num(sig)
     if len(sig) < N_SAMPLES:
         if len(sig) < 5 * FS_MODEL:
-            sys.exit(f'Rekaman terlalu pendek ({len(sig)/FS_MODEL:.1f} s); minimal 5 detik.')
+            raise ValueError(f'Rekaman terlalu pendek ({len(sig)/FS_MODEL:.1f} s); minimal 5 detik. Periksa frekuensi sampling.')
         sig = np.pad(sig, ((0, N_SAMPLES - len(sig)), (0, 0)))
     step = N_SAMPLES if len(sig) > 6 * N_SAMPLES else N_SAMPLES // 2  # > 60 s: tanpa tumpang tindih
     starts = range(0, len(sig) - N_SAMPLES + 1, step)
     return sig, np.stack([sig[s:s + N_SAMPLES] for s in starts])
 
 
-def main():
-    ap = argparse.ArgumentParser(description='Prediksi diagnosis dari EKG 12 sadapan.')
-    ap.add_argument('input', help='file CSV, atau nama rekaman WFDB')
-    ap.add_argument('--fs', type=float, help='frekuensi sampling (Hz) untuk CSV; default 100')
-    ap.add_argument('--plot', help='simpan gambar EKG + hasil ke file PNG ini')
-    ap.add_argument('--json', action='store_true', help='keluaran JSON')
-    a = ap.parse_args()
-
-    norm = np.load(os.path.join(ROOT, 'model', 'norm.npz'))
-    thr = json.load(open(os.path.join(ROOT, 'model', 'thresholds.json')))
+def load_model():
+    """Muat bobot, normalisasi, dan ambang sekali saja."""
     m = ResNet1D(); m.load_state_dict(torch.load(os.path.join(ROOT, 'model', 'resnet1d_best.pt'), map_location='cpu')); m.eval()
+    return {'model': m, 'norm': np.load(os.path.join(ROOT, 'model', 'norm.npz')),
+            'thr': json.load(open(os.path.join(ROOT, 'model', 'thresholds.json')))}
 
-    if not (os.path.exists(a.input) or os.path.exists(a.input + '.hea')):
-        sys.exit(f'File tidak ditemukan: {a.input}')
-    sig, fs = load_signal(a.input, a.fs)
-    sig100, W = windows(sig, fs)
+
+def predict_signal(sig, fs, M):
+    """sig: array [N, 12] dalam mV (urutan I..V6), fs dalam Hz. Kembalikan dict hasil."""
+    sig100, W = windows(np.asarray(sig, dtype=np.float32), fs)
     W = W - np.median(W, axis=1, keepdims=True)  # buang offset DC per sadapan per jendela (penting untuk data Holter)
-    x = ((W - norm['mu']) / norm['sd']).transpose(0, 2, 1).astype(np.float32)
+    x = ((W - M['norm']['mu']) / M['norm']['sd']).transpose(0, 2, 1).astype(np.float32)
     with torch.no_grad():
-        p = torch.sigmoid(m(torch.from_numpy(x))).numpy().mean(0)
-
-    res = [{'kode': c, 'diagnosis': NAMA[c], 'probabilitas': round(float(p[k]), 3),
-            'ambang': round(thr[c], 3), 'positif': bool(p[k] >= thr[c])} for k, c in enumerate(CLASSES)]
+        p = torch.sigmoid(M['model'](torch.from_numpy(x))).numpy().mean(0)
+    res = [{'kode': c, 'diagnosis': NAMA[c], 'probabilitas': round(float(p[k]), 4),
+            'ambang': round(M['thr'][c], 4), 'positif': bool(p[k] >= M['thr'][c])} for k, c in enumerate(CLASSES)]
     pos = sorted([r for r in res if r['positif'] and r['kode'] != 'NORM'], key=lambda r: -r['probabilitas'])
     if pos:
         kesimpulan = 'Abnormal: ' + ', '.join(f"{r['diagnosis']} ({r['probabilitas']:.0%})" for r in pos)
@@ -117,10 +110,29 @@ def main():
         kesimpulan = f"Kemungkinan EKG normal ({res[0]['probabilitas']:.0%})"
     else:
         kesimpulan = 'Tidak meyakinkan: tidak ada kelas yang melewati ambang'
+    return {'kesimpulan': kesimpulan, 'durasi_detik': len(sig100) / FS_MODEL, 'jumlah_jendela': len(W),
+            'hasil': res, '_sig100': sig100}
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description='Prediksi diagnosis dari EKG 12 sadapan.')
+    ap.add_argument('input', help='file CSV, atau nama rekaman WFDB')
+    ap.add_argument('--fs', type=float, help='frekuensi sampling (Hz) untuk CSV; default 100')
+    ap.add_argument('--plot', help='simpan gambar EKG + hasil ke file PNG ini')
+    ap.add_argument('--json', action='store_true', help='keluaran JSON')
+    a = ap.parse_args(argv)
+
+    if not (os.path.exists(a.input) or os.path.exists(a.input + '.hea')):
+        sys.exit(f'File tidak ditemukan: {a.input}')
+    try:
+        sig, fs = load_signal(a.input, a.fs)
+        out = predict_signal(sig, fs, load_model())
+    except ValueError as e:
+        sys.exit(str(e))
+    sig100, W, res, kesimpulan = out['_sig100'], range(out['jumlah_jendela']), out['hasil'], out['kesimpulan']
 
     if a.json:
-        print(json.dumps({'kesimpulan': kesimpulan, 'durasi_detik': len(sig100) / FS_MODEL,
-                          'jumlah_jendela': len(W), 'hasil': res}, indent=1, ensure_ascii=False)); return
+        print(json.dumps({k: v for k, v in out.items() if not k.startswith('_')}, indent=1, ensure_ascii=False)); return
     print(f'\nFile    : {a.input}\nDurasi  : {len(sig100)/FS_MODEL:.1f} s ({len(W)} jendela 10 s)\n')
     print(f"{'Kode':<5} {'Diagnosis':<36} {'Prob':>6} {'Ambang':>7}  Hasil")
     for r in res:

@@ -6,6 +6,28 @@ Proyek pendamping makalah *"Pemanfaatan Machine Learning, Deep Learning, dan Lar
 
 > Model ini untuk pembelajaran, **bukan** alat diagnosis klinis.
 
+## Cara cepat: satu perintah
+
+```bash
+python3 main.py
+```
+
+Saat pertama dijalankan, `main.py` otomatis membuat virtualenv `.venv` dan memasang dependensi (±1–3 menit, sekali saja). Setelah itu:
+
+1. model dimuat dan diuji cepat pada 5 file di `contoh/`,
+2. web aktif di **http://localhost:8000** dan browser terbuka otomatis,
+3. prediksi di web dijalankan oleh **PyTorch di server lokal** (±0,2 detik untuk rekaman 5 menit). Baris info hasil menulis `mesin: PyTorch · server lokal`.
+
+Opsi lain:
+
+```bash
+python3 main.py file.csv --fs 257          # prediksi satu file langsung di terminal
+python3 main.py --port 9000 --no-browser   # port lain, tanpa membuka browser
+curl --data-binary @file.csv "http://localhost:8000/api/predict?fs=257"   # API JSON
+```
+
+Tekan `Ctrl+C` untuk menghentikan server.
+
 ## Hasil (data uji, fold 10, n = 2.158 EKG)
 
 | Kelas | Arti | AUC ML klasik | AUC CNN | Sensitivitas CNN | Spesifisitas CNN | PPV CNN |

@@ -1,4 +1,4 @@
-<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><title>Pembaca EKG 12 Sadapan</title>
+<!doctype html><html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><title>Pembaca EKG 12 Sadapan</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
@@ -336,10 +336,17 @@ async function runModel(sig100, label, notes) {
   const maxN = 600 * 100; if (s[0].length > maxN) { s = s.map(ch => ch.slice(0, maxN)); notes.push('hanya 10 menit pertama yang dianalisis'); }
   const step = s[0].length > 6000 ? 1000 : 500; // > 60 s: jendela tanpa tumpang tindih agar cepat
   const starts = []; for (let t = 0; t + 1000 <= s[0].length; t += step) starts.push(t);
-  const acc = [0, 0, 0, 0, 0];
+  let acc = [0, 0, 0, 0, 0], nWin = starts.length;
   $('verdict').textContent = 'Menghitung…'; $('pill').className = 'pill unc'; $('pill').textContent = '…';
   const t0 = performance.now();
-  for (let i = 0; i < starts.length; i++) {
+  if (BACKEND) {
+    $('verdict').textContent = 'Menghitung di server lokal (PyTorch)…';
+    const r = await fetch('/api/predict', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fs: 100, sig: s.map(ch => Array.from(ch, v => Math.round(v * 1e4) / 1e4)) }) });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || 'Server lokal menolak data.');
+    acc = j.hasil.map(h => h.probabilitas); nWin = j.jumlah_jendela;
+  } else for (let i = 0; i < starts.length; i++) {
     await new Promise(r => setTimeout(r, 0));
     const x = new Float32Array(12000);
     for (let l = 0; l < 12; l++) {
@@ -351,7 +358,7 @@ async function runModel(sig100, label, notes) {
   }
   const ms = performance.now() - t0;
   current = { sig: s, label };
-  render(acc, { label, dur: N / 100, windows: starts.length, ms, notes });
+  render(acc, { label, dur: N / 100, windows: nWin, ms, notes, engine: BACKEND ? 'PyTorch · server lokal' : 'JavaScript · browser' });
   drawECG(s);
 }
 
@@ -362,7 +369,7 @@ function render(p, info) {
   if (abn.length) { pill.className = 'pill abn'; pill.textContent = 'Abnormal'; v.textContent = abn.map(r => `${NAMA[r.c][0]} (${Math.round(r.p * 100)}%)`).join(', '); }
   else if (res[0].pos) { pill.className = 'pill nrm'; pill.textContent = 'Normal'; v.textContent = `Kemungkinan EKG normal (${Math.round(res[0].p * 100)}%)`; }
   else { pill.className = 'pill unc'; pill.textContent = 'Tidak meyakinkan'; v.textContent = 'Tidak ada kelas yang melewati ambang'; }
-  $('meta').textContent = `${info.label} · ${info.dur.toFixed(1)} s · ${info.windows} jendela 10 s · ${Math.round(info.ms)} ms` + (info.notes.length ? ' · ' + info.notes.join(' · ') : '');
+  $('meta').textContent = `${info.label} · ${info.dur.toFixed(1)} s · ${info.windows} jendela 10 s · ${Math.round(info.ms)} ms` + ` · mesin: ${info.engine}` + (info.notes.length ? ' · ' + info.notes.join(' · ') : '');
   $('rows').innerHTML = res.map(r => `<tr>
     <td class="code">${r.c}</td>
     <td class="name">${NAMA[r.c][0]}<small>${NAMA[r.c][1]}</small></td>
@@ -450,8 +457,12 @@ let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTime
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => current && drawECG(current.sig));
 new MutationObserver(() => current && drawECG(current.sig)).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
-setTimeout(() => {
+let BACKEND = false;
+setTimeout(async () => {
   WEIGHTS = f16ToF32(new Uint16Array(b64ToBytes(W_B64).buffer));
+  if (location.protocol.startsWith('http') && ['localhost', '127.0.0.1'].includes(location.hostname)) {
+    try { const r = await fetch('/api/health'); BACKEND = r.ok && (await r.json()).ok === true; } catch (e) { BACKEND = false; }
+  }
   loadSample('mi');
 }, 0);
 </script>
