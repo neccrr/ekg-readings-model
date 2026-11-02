@@ -96,11 +96,15 @@ def load_model():
 
 def predict_signal(sig, fs, M):
     """sig: array [N, 12] dalam mV (urutan I..V6), fs dalam Hz. Kembalikan dict hasil."""
+    import time
+    t0 = time.perf_counter()
     sig100, W = windows(np.asarray(sig, dtype=np.float32), fs)
     W = W - np.median(W, axis=1, keepdims=True)  # buang offset DC per sadapan per jendela (penting untuk data Holter)
     x = ((W - M['norm']['mu']) / M['norm']['sd']).transpose(0, 2, 1).astype(np.float32)
+    t1 = time.perf_counter()
     with torch.no_grad():
         p = torch.sigmoid(M['model'](torch.from_numpy(x))).numpy().mean(0)
+    t2 = time.perf_counter()
     res = [{'kode': c, 'diagnosis': NAMA[c], 'probabilitas': round(float(p[k]), 4),
             'ambang': round(M['thr'][c], 4), 'positif': bool(p[k] >= M['thr'][c])} for k, c in enumerate(CLASSES)]
     pos = sorted([r for r in res if r['positif'] and r['kode'] != 'NORM'], key=lambda r: -r['probabilitas'])
@@ -111,7 +115,8 @@ def predict_signal(sig, fs, M):
     else:
         kesimpulan = 'Tidak meyakinkan: tidak ada kelas yang melewati ambang'
     return {'kesimpulan': kesimpulan, 'durasi_detik': len(sig100) / FS_MODEL, 'jumlah_jendela': len(W),
-            'hasil': res, '_sig100': sig100}
+            'hasil': res, 'timing': {'preprocess_ms': round((t1 - t0) * 1000, 2), 'inference_ms': round((t2 - t1) * 1000, 2)},
+            '_sig100': sig100}
 
 
 def main(argv=None):

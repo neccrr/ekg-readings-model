@@ -23,10 +23,19 @@ Opsi lain:
 ```bash
 python3 main.py file.csv --fs 257          # prediksi satu file langsung di terminal
 python3 main.py --port 9000 --no-browser   # port lain, tanpa membuka browser
+python3 main.py -v --log-file logs/server.log   # log rinci + simpan ke file
 curl --data-binary @file.csv "http://localhost:8000/api/predict?fs=257"   # API JSON
 ```
 
-Tekan `Ctrl+C` untuk menghentikan server.
+Tekan `Ctrl+C` untuk menghentikan server; ringkasan sesi (jumlah permintaan, median latensi, memori puncak) tercetak saat berhenti.
+
+**Log terminal.** Setiap prediksi tercatat satu baris: nama file, frekuensi, durasi, jumlah jendela, ukuran data, rincian waktu (baca · parse · pra-proses · inferensi · total) dan kesimpulan. `-v` menambahkan probabilitas tiap kelas dan permintaan file statis.
+
+```
+13:23:15 INFO  PREDIKSI I03_MI-akut_ST-elevasi-PVCs_257Hz.csv | 257→100 Hz (diubah di browser), 300.0 s, 30 jendela, 2542 KB | baca 1 · parse 52 · pra-proses 6 · inferensi 65 · total 123 ms (2438× realtime) | Abnormal: Infark miokard (92%), …
+```
+
+**Statistik performa di web.** Panel *Performa* menampilkan total waktu, waktu inferensi, waktu per jendela 10 detik, kecepatan (× realtime), pembagian waktu per tahap (baca CSV, resampling, kirim data, pra-proses, inferensi, gambar EKG), riwayat sesi, median/p95, dan info sistem server (`GET /api/stats`).
 
 ## Hasil (data uji, fold 10, n = 2.158 EKG)
 
