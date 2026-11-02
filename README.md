@@ -64,12 +64,44 @@ python src/evaluate.py   # grafik & metrik -> hasil/
 
 Bobot model terlatih tersedia di `model/resnet1d_best.pt` (normalisasi per sadapan di `model/norm.npz`).
 
+## Prediksi dari EKG sendiri
+
+```bash
+pip install -r requirements.txt
+python src/predict.py contoh/ekg_mi.csv
+```
+
+```
+Kode  Diagnosis                              Prob  Ambang  Hasil
+NORM  EKG normal                             0.37    0.48  -       #######
+MI    Infark miokard                         0.76    0.15  POSITIF ###############
+STTC  Perubahan segmen ST / gelombang T      0.00    0.18  -
+CD    Gangguan konduksi                      0.01    0.15  -
+HYP   Hipertrofi                             0.00    0.08  -
+
+Kesimpulan: Abnormal: Infark miokard (76%)
+```
+
+**Format input yang diterima:**
+- **CSV** — 12 kolom (satu per sadapan), satuan **mV**, satu baris per sampel. Header nama sadapan (`I,II,III,aVR,aVL,aVF,V1,...,V6`) opsional; tanpa header, urutan kolom harus standar. Tentukan frekuensi sampling dengan `--fs` (default 100 Hz), misalnya `--fs 500`.
+- **WFDB** (`.hea` + `.dat`, format PhysioNet) — tulis nama rekaman tanpa ekstensi; frekuensi sampling dibaca otomatis.
+- Minimal 5 detik. Rekaman lebih dari 10 detik dipotong per jendela 10 detik (geser 5 detik) lalu probabilitas dirata-rata.
+
+**Opsi:** `--plot hasil.png` menyimpan gambar 12 sadapan beserta hasilnya; `--json` untuk keluaran JSON.
+
+**Ambang** tiap kelas (`model/thresholds.json`) dipilih dengan indeks Youden pada set validasi. Satu EKG bisa positif untuk lebih dari satu kelas.
+
+Contoh input siap pakai ada di `contoh/` (EKG dari set uji PTB-XL: normal, MI, STTC, CD, HYP).
+
+> Gambar/foto EKG kertas **tidak** bisa langsung dipakai — model butuh sinyal digital. Model hanya mengenal 5 superclass PTB-XL; aritmia seperti fibrilasi atrium tidak diklasifikasikan tersendiri.
+
 ## Struktur
 
 ```
-src/        skrip preprocessing, pelatihan, evaluasi
+src/        skrip preprocessing, pelatihan, evaluasi, prediksi (predict.py)
+contoh/     contoh input CSV
 notebook/   notebook lengkap siap-Colab (penjelasan Bahasa Indonesia)
-model/      bobot CNN terlatih + parameter normalisasi
+model/      bobot CNN terlatih, parameter normalisasi, ambang per kelas
 hasil/      kurva ROC, saliency, kurva pelatihan, metrik JSON, log
 ```
 
