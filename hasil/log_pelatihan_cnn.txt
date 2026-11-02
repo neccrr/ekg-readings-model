@@ -1,0 +1,32 @@
+parameter: 1015429
+ep  1 loss 0.4230 val macroAUC 0.8988 (85s)
+ep  2 loss 0.3307 val macroAUC 0.8994 (216s)
+ep  3 loss 0.3134 val macroAUC 0.9043 (84s)
+ep  4 loss 0.3046 val macroAUC 0.8953 (87s)
+ep  5 loss 0.2988 val macroAUC 0.9076 (91s)
+ep  6 loss 0.2897 val macroAUC 0.9151 (98s)
+ep  7 loss 0.2830 val macroAUC 0.9119 (100s)
+ep  8 loss 0.2760 val macroAUC 0.9210 (86s)
+ep  9 loss 0.2682 val macroAUC 0.9241 (90s)
+ep 10 loss 0.2655 val macroAUC 0.9153 (85s)
+ep 11 loss 0.2562 val macroAUC 0.9168 (82s)
+ep 12 loss 0.2516 val macroAUC 0.9238 (85s)
+ep 13 loss 0.2477 val macroAUC 0.9245 (90s)
+ep 14 loss 0.2400 val macroAUC 0.9276 (86s)
+ep 15 loss 0.2303 val macroAUC 0.9232 (87s)
+ep 16 loss 0.2227 val macroAUC 0.9306 (87s)
+ep 17 loss 0.2131 val macroAUC 0.9306 (92s)
+ep 18 loss 0.2022 val macroAUC 0.9279 (90s)
+ep 19 loss 0.1942 val macroAUC 0.9281 (88s)
+ep 20 loss 0.1891 val macroAUC 0.9279 (89s)
+{
+ "macro_auc_test": 0.927491836885585,
+ "per_class": {
+  "NORM": 0.9484534469948774,
+  "MI": 0.9294843962008141,
+  "STTC": 0.9389360951227433,
+  "CD": 0.9205727650324134,
+  "HYP": 0.9000124810770767
+ },
+ "best_val_auc": 0.9306226477714393
+}

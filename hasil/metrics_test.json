@@ -1,0 +1,57 @@
+[
+ {
+  "kelas": "NORM",
+  "nama": "Normal",
+  "prevalensi_uji": 0.4462465245597776,
+  "ambang": 0.4780585467815399,
+  "auc_cnn": 0.9484534469948774,
+  "auc_ml": 0.9129767941014177,
+  "sensitivitas": 0.9231568016614745,
+  "spesifisitas": 0.8259414225941423,
+  "ppv": 0.8103919781221514
+ },
+ {
+  "kelas": "MI",
+  "nama": "Infark miokard",
+  "prevalensi_uji": 0.2548656163113994,
+  "ambang": 0.15091921389102936,
+  "auc_cnn": 0.9294843962008141,
+  "auc_ml": 0.859330619629127,
+  "sensitivitas": 0.8745454545454545,
+  "spesifisitas": 0.8327114427860697,
+  "ppv": 0.6413333333333333
+ },
+ {
+  "kelas": "STTC",
+  "nama": "Perubahan ST/T",
+  "prevalensi_uji": 0.24142724745134383,
+  "ambang": 0.1795719712972641,
+  "auc_cnn": 0.9389360951227433,
+  "auc_ml": 0.9062889490512699,
+  "sensitivitas": 0.8848368522072937,
+  "spesifisitas": 0.8430054978619426,
+  "ppv": 0.6420612813370473
+ },
+ {
+  "kelas": "CD",
+  "nama": "Gangguan konduksi",
+  "prevalensi_uji": 0.22984244670991658,
+  "ambang": 0.15295207500457764,
+  "auc_cnn": 0.9205727650324134,
+  "auc_ml": 0.8716494895384497,
+  "sensitivitas": 0.8306451612903226,
+  "spesifisitas": 0.865222623345367,
+  "ppv": 0.6477987421383647
+ },
+ {
+  "kelas": "HYP",
+  "nama": "Hipertrofi",
+  "prevalensi_uji": 0.12140871177015755,
+  "ambang": 0.0755615085363388,
+  "auc_cnn": 0.9000124810770767,
+  "auc_ml": 0.8870563178406932,
+  "sensitivitas": 0.8129770992366412,
+  "spesifisitas": 0.8243670886075949,
+  "ppv": 0.3901098901098901
+ }
+]
