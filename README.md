@@ -1,8 +1,8 @@
-# Klasifikasi EKG 12 Sadapan: Machine Learning vs Deep Learning
+# Pembaca EKG 12 Sadapan: Machine Learning, Deep Learning & Pengukuran Otomatis
 
-Perbandingan model *machine learning* klasik (fitur buatan tangan + *gradient boosting*) dan *deep learning* (1D ResNet CNN) untuk mengklasifikasikan EKG 12 sadapan ke 5 kelompok diagnosis pada dataset **PTB-XL**.
+Sistem interpretasi EKG 12 sadapan berbasis dataset **PTB-XL**: perbandingan *machine learning* klasik vs *deep learning* (1D ResNet), model multi-tugas 58 label (5 superclass + 53 kode SCP-ECG), pengukuran berbasis aturan, laporan 8 kategori, aplikasi web, uji eksternal, dan digitalisasi EKG dari gambar.
 
-Proyek pendamping makalah *"Pemanfaatan Machine Learning, Deep Learning, dan Large Language Model dalam Interpretasi Elektrokardiogram"* — Muhammad Affan Hassya Purnomo, FK UNS.
+Proyek pendamping makalah *"Pemanfaatan Machine Learning, Deep Learning, dan Large Language Model dalam Interpretasi Elektrokardiogram (EKG)"* — Muhammad Affan Hassya Purnomo, FK UNS. Makalah lengkap (BAB IV membahas implementasi ini): [`docs/makalah_ai_ekg.pdf`](docs/makalah_ai_ekg.pdf).
 
 > Model ini untuk pembelajaran, **bukan** alat diagnosis klinis.
 
@@ -62,6 +62,43 @@ Setiap EKG menghasilkan **laporan 8 kategori** (di web, terminal, dan API) yang 
 - Kode jarang (QT panjang, efek elektrolit, voltase tinggi) hampir tidak pernah positif setelah ambang minimum 0,10. Jadi QT panjang praktis hanya terdeteksi dari pengukuran QTc.
 - Interval diukur pada 100 Hz (resolusi 10 ms) dari median beat. Hasilnya perkiraan, tidak setara pembacaan manual.
 - PPV pengukuran ST/T, PVC, dan voltase LVH rendah dibanding label kardiolog. Karena itu temuan tersebut di laporan diambil dari model, bukan dari aturan.
+
+## Uji eksternal
+
+**INCART (Holter 12 sadapan, 18 pasien, 5 menit pertama, 257 Hz)**. Data tidak disertakan di repo; unduh dari [PhysioNet](https://physionet.org/content/incartdb/1.0.0/).
+
+| Kondisi menurut sumber | Rekaman | Terdeteksi oleh laporan |
+|---|---|---|
+| Infark miokard akut | I03, I62, I64 | 3/3 sebagai infark; elevasi ST 2/2 (I03, I62) |
+| Hipertrofi ventrikel kiri | I20, I44, I72 | 3/3 |
+| RBBB | I16 | 1/1 |
+| Fibrilasi atrium | I50 | 1/1 |
+| WPW | I68, I71 | 1/2 |
+| Blok AV derajat 2 Mobitz I | I09 | 0/1 (dibaca fibrilasi atrium) |
+
+"Hipertrofi ventrikel" juga muncul pada 7 dari 15 rekaman tanpa LVH. Penyebab yang mungkin adalah *domain shift* dari elektroda Holter (Mason–Likar) dibanding EKG istirahat PTB-XL.
+
+**VF (CU Ventricular Tachyarrhythmia DB):** 3/3 segmen VF terdeteksi, dan tidak ada positif palsu pada 2.158 EKG uji PTB-XL. Daya 3–8 Hz pada VF 0,79–0,91, sedangkan pada PTB-XL maksimal 0,62.
+
+## Digitalisasi EKG dari gambar
+
+`tools/digitize.py` mengubah gambar EKG cetak (format 3×4 + strip ritme) menjadi sinyal, dan `tools/build_csv.py` menyusunnya menjadi CSV. Contoh: EKG *"Left ventricular and left atrial hypertrophy"* dari [ECG Library](http://www.ecglibrary.com/lvhlah.html) (pria 83 tahun, stenosis aorta).
+
+1. Skala dibaca dari pulsa kalibrasi: 1 mV = 31 px; 0,2 s = 15 px → 25 mm/s.
+2. Jejak tiap baris ditelusuri per kolom piksel dari garis dasarnya; garis pemisah antar-kolom dibuang.
+3. Karena tiap sadapan hanya tercetak 2,5 s, sisa 10 s diisi median beat sadapan itu pada waktu detak dari strip ritme V1.
+
+![Overlay digitalisasi](hasil/lvhlah_overlay_digitasi.png)
+
+Hasil (`contoh/digitasi/lvhlah_12sadapan_10s_100Hz.csv`): irama sinus 63/menit, **LVH p = 0,61** (sesuai sumber), plus perubahan ST non-spesifik. Pembesaran atrium kiri dari sumber **tidak** terdeteksi; kemungkinan karena resolusi gambar rendah (±3 px/mm).
+
+```bash
+python tools/digitize.py gambar.gif rows.npy
+python tools/build_csv.py rows.npy mentah.csv siap_model.csv
+python3 main.py siap_model.csv
+```
+
+Konstanta skala, garis dasar, dan posisi kolom di `digitize.py` disetel untuk gambar contoh; gambar lain perlu penyesuaian.
 
 ## Hasil model 5 kelas (data uji, fold 10, n = 2.158 EKG)
 
@@ -160,8 +197,10 @@ Contoh input siap pakai ada di `contoh/` (EKG dari set uji PTB-XL: normal, MI, S
 
 ```
 src/        preprocessing, pelatihan, evaluasi, prediksi (predict.py), pengukuran (measure.py), laporan 8 kategori (report.py)
-contoh/     contoh input CSV
-web/        versi browser (index.html) + mesin inferensi JS (engine.js)
+contoh/     contoh input CSV (PTB-XL) + digitasi/ (EKG hasil digitalisasi gambar)
+tools/      digitalisasi EKG dari gambar (digitize.py, build_csv.py)
+docs/       makalah lengkap (PDF)
+web/        versi browser (index.html, mandiri) + sumber JS: engine.js (model), measure.js (pengukuran), report.js (laporan)
 notebook/   notebook lengkap siap-Colab (penjelasan Bahasa Indonesia)
 model/      bobot CNN 5 kelas + model lengkap 58 label (resnet1d_full.pt, labels.json berisi ambang & metrik uji)
 hasil/      kurva ROC, saliency, kurva pelatihan, metrik JSON, log
@@ -169,6 +208,8 @@ hasil/      kurva ROC, saliency, kurva pelatihan, metrik JSON, log
 
 ## Referensi
 
+- Strodthoff N, Wagner P, Schaeffter T, Samek W. Deep learning for ECG analysis: benchmarks and insights from PTB-XL. *IEEE J Biomed Health Inform*. 2021;25(5):1519–1528. [doi:10.1109/JBHI.2020.3022989](https://doi.org/10.1109/JBHI.2020.3022989)
+- St Petersburg INCART 12-lead Arrhythmia Database; CU Ventricular Tachyarrhythmia Database. PhysioNet.
 - Wagner P, Strodthoff N, Bousseljot RD, dkk. PTB-XL, a large publicly available electrocardiography dataset. *Sci Data*. 2020;7:154. [doi:10.1038/s41597-020-0495-6](https://doi.org/10.1038/s41597-020-0495-6)
 - Goldberger AL, dkk. PhysioBank, PhysioToolkit, and PhysioNet. *Circulation*. 2000;101(23):e215–e220.
 - Hannun AY, dkk. Cardiologist-level arrhythmia detection and classification in ambulatory electrocardiograms using a deep neural network. *Nat Med*. 2019;25:65–69. [doi:10.1038/s41591-018-0268-3](https://doi.org/10.1038/s41591-018-0268-3)

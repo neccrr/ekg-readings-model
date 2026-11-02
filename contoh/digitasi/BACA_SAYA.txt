@@ -1,0 +1,21 @@
+EKG hasil digitalisasi: "Left ventricular and left atrial hypertrophy" (ecglibrary.com/lvhlah.html)
+Pasien: laki-laki 83 tahun dengan stenosis aorta. Diagnosis sumber: LVH + abnormalitas atrium kiri
+(komponen negatif terminal gelombang P di V1).
+
+File:
+1. lvhlah_12sadapan_10s_100Hz.csv  -> SIAP DIPAKAI di Pembaca EKG / predict.py (pilih 100 Hz)
+   12 kolom (I..V6), 1000 baris, satuan mV.
+   Tiap sadapan hanya tercetak 2,5 detik di gambar (format 3x4). Segmen asli dipertahankan;
+   sisa 7,5 detik diisi median beat sadapan itu, ditempatkan pada waktu detak dari strip ritme V1
+   (11 detak, 63/menit). Jadi variasi antar-denyut di luar segmen asli TIDAK nyata.
+2. lvhlah_digitasi_mentah.csv -> hanya data yang benar-benar ada di gambar:
+   kolom waktu + 12 sadapan (kosong di luar segmen 2,5 detiknya) + V1_ritme (10 detik penuh).
+3. lvhlah_overlay_digitasi.png -> garis merah hasil digitalisasi di atas gambar asli (cek kualitas).
+4. lvhlah_hasil.png -> 12 sadapan siap-model + hasil prediksi.
+
+Skrip: tools/digitize.py lalu tools/build_csv.py.
+Cara digitalisasi: skala dari pulsa kalibrasi (1 mV = 31 px; 0,2 s = 15 px -> 25 mm/s),
+garis dasar tiap baris, penelusuran jejak per kolom piksel, lalu diinterpolasi ke 100 Hz.
+Garis pemisah antar-kolom (±0,08 s) dibuang. Gambar asli beresolusi rendah (779x530 px,
+±3 px/mm), sehingga puncak QRS yang sangat runcing bisa sedikit terpotong dan detail
+gelombang P kecil (mis. komponen terminal P di V1) bisa hilang.
