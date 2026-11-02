@@ -88,15 +88,27 @@ def windows(sig, fs):
 
 
 def load_model():
-    """Muat bobot, normalisasi, dan ambang sekali saja."""
-    m = ResNet1D(); m.load_state_dict(torch.load(os.path.join(ROOT, 'model', 'resnet1d_best.pt'), map_location='cpu')); m.eval()
-    return {'model': m, 'norm': np.load(os.path.join(ROOT, 'model', 'norm.npz')),
-            'thr': json.load(open(os.path.join(ROOT, 'model', 'thresholds.json')))}
+    """Muat bobot, normalisasi, dan ambang sekali saja.
+    Bila model/resnet1d_full.pt ada, dipakai model lengkap (5 superclass + kode SCP rinci)."""
+    full = os.path.join(ROOT, 'model', 'resnet1d_full.pt'), os.path.join(ROOT, 'model', 'labels.json')
+    if all(os.path.exists(f) for f in full):
+        meta = json.load(open(full[1]))
+        m = ResNet1D(n_out=len(meta['labels'])); m.load_state_dict(torch.load(full[0], map_location='cpu'))
+        labels, thr = meta['labels'], meta['thr']
+        auc = {r['label']: r['auc'] for r in meta.get('metrics', []) if r.get('auc')}
+    else:
+        m = ResNet1D(); m.load_state_dict(torch.load(os.path.join(ROOT, 'model', 'resnet1d_best.pt'), map_location='cpu'))
+        labels, thr = CLASSES, json.load(open(os.path.join(ROOT, 'model', 'thresholds.json')))
+        auc = {}
+    m.eval()
+    return {'model': m, 'norm': np.load(os.path.join(ROOT, 'model', 'norm.npz')), 'labels': labels, 'thr': thr, 'auc': auc}
 
 
-def predict_signal(sig, fs, M):
+def predict_signal(sig, fs, M, laporan=True):
     """sig: array [N, 12] dalam mV (urutan I..V6), fs dalam Hz. Kembalikan dict hasil."""
     import time
+    from measure import measure
+    from report import build, NAMA_KODE
     t0 = time.perf_counter()
     sig100, W = windows(np.asarray(sig, dtype=np.float32), fs)
     W = W - np.median(W, axis=1, keepdims=True)  # buang offset DC per sadapan per jendela (penting untuk data Holter)
@@ -105,8 +117,13 @@ def predict_signal(sig, fs, M):
     with torch.no_grad():
         p = torch.sigmoid(M['model'](torch.from_numpy(x))).numpy().mean(0)
     t2 = time.perf_counter()
+    thr = M['thr']
+    sup = M['labels'][:5]  # 5 superclass selalu di depan
     res = [{'kode': c, 'diagnosis': NAMA[c], 'probabilitas': round(float(p[k]), 4),
-            'ambang': round(M['thr'][c], 4), 'positif': bool(p[k] >= M['thr'][c])} for k, c in enumerate(CLASSES)]
+            'ambang': round(thr[c] if isinstance(thr, dict) and c in thr and not isinstance(thr[c], list) else thr[c], 4),
+            'positif': bool(p[k] >= thr[c])} for k, c in enumerate(sup)]
+    kode = [{'kode': c, 'nama': NAMA_KODE.get(c, c), 'probabilitas': round(float(p[k]), 4), 'ambang': round(thr[c], 4),
+             'positif': bool(p[k] >= thr[c])} for k, c in enumerate(M['labels']) if k >= 5]
     pos = sorted([r for r in res if r['positif'] and r['kode'] != 'NORM'], key=lambda r: -r['probabilitas'])
     if pos:
         kesimpulan = 'Abnormal: ' + ', '.join(f"{r['diagnosis']} ({r['probabilitas']:.0%})" for r in pos)
@@ -114,9 +131,30 @@ def predict_signal(sig, fs, M):
         kesimpulan = f"Kemungkinan EKG normal ({res[0]['probabilitas']:.0%})"
     else:
         kesimpulan = 'Tidak meyakinkan: tidak ada kelas yang melewati ambang'
-    return {'kesimpulan': kesimpulan, 'durasi_detik': len(sig100) / FS_MODEL, 'jumlah_jendela': len(W),
-            'hasil': res, 'timing': {'preprocess_ms': round((t1 - t0) * 1000, 2), 'inference_ms': round((t2 - t1) * 1000, 2)},
-            '_sig100': sig100}
+    out = {'kesimpulan': kesimpulan, 'durasi_detik': len(sig100) / FS_MODEL, 'jumlah_jendela': len(W),
+           'hasil': res, 'kode': kode,
+           'timing': {'preprocess_ms': round((t1 - t0) * 1000, 2), 'inference_ms': round((t2 - t1) * 1000, 2)},
+           '_sig100': sig100}
+    if laporan:
+        t3 = time.perf_counter()
+        meas = measure(sig100, FS_MODEL)
+        mo = {r['kode']: (r['probabilitas'], r['ambang']) for r in res}
+        mo.update({r['kode']: (r['probabilitas'], r['ambang']) for r in kode})
+        out['pengukuran'] = meas
+        out['laporan'] = build(mo, meas, M.get('auc'))
+        # kesimpulan dari laporan (sama dengan tampilan web)
+        rep = out['laporan']; g = {b['nama']: b for b in rep[0]['butir']}
+        ab = [b['nama'].split(' (')[0] for k in rep[1:] for b in k['butir'] if b['positif'] and b['nama'] != 'Irama sinus']
+        if g['Tidak dapat dibaca (artefak/sadapan hilang)']['positif']:
+            out['kesimpulan'] = 'Tidak dapat dibaca: ' + ((meas.get('peringatan') or ['kualitas sinyal buruk'])[0])
+        elif ab:
+            out['kesimpulan'] = 'Abnormal: ' + ', '.join(ab)
+        elif g['EKG normal']['positif']:
+            out['kesimpulan'] = f"Kemungkinan EKG normal ({res[0]['probabilitas']:.0%})"
+        else:
+            out['kesimpulan'] = 'Tidak meyakinkan: tidak ada temuan yang melewati ambang'
+        out['timing']['measure_ms'] = round((time.perf_counter() - t3) * 1000, 2)
+    return out
 
 
 def main(argv=None):
@@ -145,6 +183,18 @@ def main(argv=None):
         print(f"{r['kode']:<5} {r['diagnosis']:<36} {r['probabilitas']:>6.2f} {r['ambang']:>7.2f}  "
               f"{'POSITIF' if r['positif'] else '-':<8}{bar}")
     print(f'\nKesimpulan: {kesimpulan}')
+    m = out.get('pengukuran') or {}
+    if m:
+        iv = m.get('interval_ms') or {}
+        print(f"\nPengukuran: {m.get('irama')} · {m.get('frekuensi_jantung', '—')}/menit · PR {iv.get('PR') or '—'} · QRS {iv.get('QRS') or '—'} · "
+              f"QT/QTc {iv.get('QT') or '—'}/{iv.get('QTc_Bazett') or '—'} ms · aksis {m.get('aksis_derajat', '—')}°")
+        for w in m.get('peringatan', []):
+            print('  ! ' + w)
+    for kat in out.get('laporan', []):
+        pos = [b for b in kat['butir'] if b['positif']]
+        print(f"\n{kat['kategori']}: " + ('—' if not pos else ''))
+        for b in pos:
+            print(f"  + {b['nama']}  [{'; '.join(b['dasar'])}]")
     print('Catatan: model pembelajaran (PTB-XL), bukan alat diagnosis klinis. Konfirmasi dengan dokter.\n')
 
     if a.plot:

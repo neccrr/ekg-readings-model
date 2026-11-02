@@ -37,7 +37,33 @@ Tekan `Ctrl+C` untuk menghentikan server; ringkasan sesi (jumlah permintaan, med
 
 **Statistik performa di web.** Panel *Performa* menampilkan total waktu, waktu inferensi, waktu per jendela 10 detik, kecepatan (× realtime), pembagian waktu per tahap (baca CSV, resampling, kirim data, pra-proses, inferensi, gambar EKG), riwayat sesi, median/p95, dan info sistem server (`GET /api/stats`).
 
-## Hasil (data uji, fold 10, n = 2.158 EKG)
+## Cakupan diagnosis (8 kategori)
+
+Setiap EKG menghasilkan **laporan 8 kategori** (di web, terminal, dan API) yang menggabungkan dua sumber:
+
+- **Model** (`model/resnet1d_full.pt`): 1D ResNet multi-tugas yang mengeluarkan 5 superclass + **53 kode SCP-ECG** PTB-XL (semua kode dengan ≥ 50 contoh). Macro AUC uji: superclass 0,926, kode rinci 0,920. Ambang per kode = F1 maksimum di set validasi, minimal 0,10.
+- **Pengukuran berbasis aturan** (`src/measure.py`, versi JS di `web/`): frekuensi jantung, irama, PR, QRS, QT/QTc, aksis, voltase, deviasi ST, PVC/PAC, kualitas sinyal, plus heuristik untuk pola yang **tidak ada di PTB-XL** (VF, asistol, takikardia kompleks lebar, blok AV derajat 2/3, flutter, irama junctional/idioventrikular).
+
+| Kategori | Dari model (AUC uji) | Dari pengukuran / heuristik | Belum didukung |
+|---|---|---|---|
+| 1. Interpretasi umum | EKG normal (0.95) | tidak dapat dibaca (sadapan datar/bising) | — |
+| 2. Irama sinus | irama sinus (0.88), bradikardia (0.96), takikardia (0.99), sinus aritmia (0.83) | frekuensi < 60 / > 100 | — |
+| 3. Atrium | PAC (0.93), fibrilasi atrium (0.98), aritmia supraventrikular (0.92) | AF (RR tidak teratur tanpa P), flutter (aktivitas atrium 250–400/menit) | MAT spesifik |
+| 4. Junctional | — | irama junctional/escape, SVT/AVNRT | PJC |
+| 5. Blok AV | blok AV 1 (0.97) | PR > 220 ms; P lebih banyak dari QRS (derajat 2/3) | pembedaan Mobitz I vs II |
+| 6. Ventrikel | PVC (0.99), bigemini (0.95) | VF, asistol, takikardia kompleks lebar, run ≥ 3 denyut ektopik, AIVR | Torsades de Pointes |
+| 7. Konduksi & aksis | RBBB (1.00), LBBB (1.00), LAFB (0.98), LPFB (0.91), WPW (0.81) | aksis < −30° / > +90° | — |
+| 8. Iskemia/infark/hipertrofi/QT | MI inferior (0.92), anteroseptal (0.97), iskemia (0.96), LVH (0.94), pembesaran atrium, QT panjang (0.85) | elevasi ST ≥ 2 sadapan bersebelahan, QTc > 490 / < 340 ms | — |
+
+**Validasi pengukuran** (2.158 EKG uji PTB-XL, dibandingkan label kardiolog): sinus takikardia sensitivitas 0,94/PPV 0,75; fibrilasi atrium 0,58/0,92; aksis kiri vs LAFB 0,80/0,58. Median EKG normal: PR 180, QRS 90, QTc 397 ms. VF terdeteksi 3/3 segmen CU Ventricular Tachyarrhythmia DB tanpa positif palsu di PTB-XL; asistol terdeteksi pada sinyal datar.
+
+**Keterbatasan yang diketahui:**
+- Heuristik VT gagal pada run VT di data Holter INCART (I30) karena lebar QRS terukur terlalu sempit. Jangan andalkan kategori 6 untuk VT.
+- Kode jarang (QT panjang, efek elektrolit, voltase tinggi) hampir tidak pernah positif setelah ambang minimum 0,10. Jadi QT panjang praktis hanya terdeteksi dari pengukuran QTc.
+- Interval diukur pada 100 Hz (resolusi 10 ms) dari median beat. Hasilnya perkiraan, tidak setara pembacaan manual.
+- PPV pengukuran ST/T, PVC, dan voltase LVH rendah dibanding label kardiolog. Karena itu temuan tersebut di laporan diambil dari model, bukan dari aturan.
+
+## Hasil model 5 kelas (data uji, fold 10, n = 2.158 EKG)
 
 | Kelas | Arti | AUC ML klasik | AUC CNN | Sensitivitas CNN | Spesifisitas CNN | PPV CNN |
 |---|---|---|---|---|---|---|
@@ -133,11 +159,11 @@ Contoh input siap pakai ada di `contoh/` (EKG dari set uji PTB-XL: normal, MI, S
 ## Struktur
 
 ```
-src/        skrip preprocessing, pelatihan, evaluasi, prediksi (predict.py)
+src/        preprocessing, pelatihan, evaluasi, prediksi (predict.py), pengukuran (measure.py), laporan 8 kategori (report.py)
 contoh/     contoh input CSV
 web/        versi browser (index.html) + mesin inferensi JS (engine.js)
 notebook/   notebook lengkap siap-Colab (penjelasan Bahasa Indonesia)
-model/      bobot CNN terlatih, parameter normalisasi, ambang per kelas
+model/      bobot CNN 5 kelas + model lengkap 58 label (resnet1d_full.pt, labels.json berisi ambang & metrik uji)
 hasil/      kurva ROC, saliency, kurva pelatihan, metrik JSON, log
 ```
 
