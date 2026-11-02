@@ -7,7 +7,8 @@ Contoh:
 
 Format CSV: 12 kolom (satu per sadapan), satuan mV, satu baris per sampel.
 Baris header opsional; jika ada nama sadapan (I, II, III, aVR, aVL, aVF, V1..V6), urutan kolom bebas.
-Rekaman > 10 detik dipotong per jendela 10 detik (geser 5 detik) lalu probabilitasnya dirata-rata.
+Rekaman > 10 detik dipotong per jendela 10 detik (geser 5 detik; geser 10 detik bila > 60 detik) lalu probabilitasnya dirata-rata.
+Offset DC (median) tiap sadapan dibuang per jendela, sehingga data Holter dengan baseline bergeser tetap terbaca.
 
 PERINGATAN: model penelitian/pembelajaran, bukan alat diagnosis klinis.
 """
@@ -81,7 +82,8 @@ def windows(sig, fs):
         if len(sig) < 5 * FS_MODEL:
             sys.exit(f'Rekaman terlalu pendek ({len(sig)/FS_MODEL:.1f} s); minimal 5 detik.')
         sig = np.pad(sig, ((0, N_SAMPLES - len(sig)), (0, 0)))
-    starts = range(0, len(sig) - N_SAMPLES + 1, N_SAMPLES // 2)
+    step = N_SAMPLES if len(sig) > 6 * N_SAMPLES else N_SAMPLES // 2  # > 60 s: tanpa tumpang tindih
+    starts = range(0, len(sig) - N_SAMPLES + 1, step)
     return sig, np.stack([sig[s:s + N_SAMPLES] for s in starts])
 
 
@@ -101,6 +103,7 @@ def main():
         sys.exit(f'File tidak ditemukan: {a.input}')
     sig, fs = load_signal(a.input, a.fs)
     sig100, W = windows(sig, fs)
+    W = W - np.median(W, axis=1, keepdims=True)  # buang offset DC per sadapan per jendela (penting untuk data Holter)
     x = ((W - norm['mu']) / norm['sd']).transpose(0, 2, 1).astype(np.float32)
     with torch.no_grad():
         p = torch.sigmoid(m(torch.from_numpy(x))).numpy().mean(0)

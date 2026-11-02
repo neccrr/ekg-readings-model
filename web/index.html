@@ -121,7 +121,7 @@ footer a { color: var(--accent); }
       <div class="row">
         <label for="fs" class="fmt">Frekuensi sampling</label>
         <select id="fs">
-          <option value="100">100 Hz</option><option value="250">250 Hz</option><option value="360">360 Hz</option>
+          <option value="100">100 Hz</option><option value="250">250 Hz</option><option value="257">257 Hz</option><option value="360">360 Hz</option>
           <option value="500" selected>500 Hz</option><option value="1000">1000 Hz</option><option value="custom">lainnya…</option>
         </select>
         <input type="number" id="fsCustom" min="50" max="10000" step="1" placeholder="Hz" hidden aria-label="Frekuensi sampling lain (Hz)">
@@ -144,7 +144,7 @@ footer a { color: var(--accent); }
 
   <section class="paper" aria-labelledby="paper-h">
     <div class="paper-head">
-      <div class="label" id="paper-h">Rekaman · 10 detik pertama</div>
+      <div class="label" id="paper-h">Tampilan · 10 detik pertama</div>
       <div class="meta">25 mm/s · 10 mm/mV · kotak kecil 0,04 s × 0,1 mV</div>
     </div>
     <div class="canvas-box"><canvas id="ecg" role="img" aria-label="Tampilan EKG 12 sadapan"></canvas></div>
@@ -284,6 +284,8 @@ let WEIGHTS = null, current = null, lastFile = null;
 function showMsg(text, kind) { const m = $('msg'); m.textContent = text || ''; m.className = 'msg ' + (kind || 'info'); m.hidden = !text; }
 function getFs() { const v = $('fs').value; return v === 'custom' ? parseFloat($('fsCustom').value) : parseFloat(v); }
 
+function median(a) { const b = Float32Array.from(a).sort(); const n = b.length; return n % 2 ? b[(n - 1) / 2] : (b[n / 2 - 1] + b[n / 2]) / 2; }
+
 // ---------- CSV ----------
 function parseCSV(text, fsUser) {
   const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l && !l.startsWith('#'));
@@ -319,26 +321,31 @@ function parseCSV(text, fsUser) {
   if (cols.length < 12) throw new Error(`Butuh 12 sadapan, file berisi ${cols.length} kolom data.`);
   cols = cols.slice(0, 12);
   let sig = cols.map(c => Float32Array.from(rows, r => r[c]));
-  let maxAbs = 0; for (const ch of sig) for (const v of ch) if (Math.abs(v) > maxAbs) maxAbs = Math.abs(v);
-  if (maxAbs > 30) { sig = sig.map(ch => ch.map(v => v / 1000)); notes.push('nilai tampak dalam µV, dikonversi ke mV'); }
+  const p99 = ch => { const m = median(ch), a = Array.from(ch, v => Math.abs(v - m)).sort((x, y) => x - y); return a[Math.floor(a.length * 0.99)]; };
+  const amp = Math.max(...sig.map(ch => p99(ch.length > 20000 ? ch.subarray(0, 20000) : ch)));
+  if (amp > 30) { sig = sig.map(ch => ch.map(v => v / 1000)); notes.push('nilai tampak dalam µV, dikonversi ke mV'); }
   return { sig, fs, notes };
 }
 
 // ---------- Model ----------
 async function runModel(sig100, label, notes) {
   const N = sig100[0].length;
-  if (N < 500) throw new Error(`Rekaman terbaca hanya ${(N / 100).toFixed(1)} detik (minimal 5 detik). Periksa pilihan frekuensi sampling: file 1000 baris berdurasi 10 detik biasanya 100 Hz, 5000 baris biasanya 500 Hz.`);
+  if (N < 500) throw new Error(`Rekaman terlalu pendek (${(N / 100).toFixed(1)} s). Minimal 5 detik.`);
   let s = sig100;
   if (N < 1000) { s = s.map(ch => { const o = new Float32Array(1000); o.set(ch); return o; }); notes.push('rekaman < 10 s, sisa diisi nol'); }
-  const maxN = 120 * 100; if (s[0].length > maxN) { s = s.map(ch => ch.slice(0, maxN)); notes.push('hanya 120 detik pertama yang dianalisis'); }
-  const starts = []; for (let t = 0; t + 1000 <= s[0].length; t += 500) starts.push(t);
+  const maxN = 600 * 100; if (s[0].length > maxN) { s = s.map(ch => ch.slice(0, maxN)); notes.push('hanya 10 menit pertama yang dianalisis'); }
+  const step = s[0].length > 6000 ? 1000 : 500; // > 60 s: jendela tanpa tumpang tindih agar cepat
+  const starts = []; for (let t = 0; t + 1000 <= s[0].length; t += step) starts.push(t);
   const acc = [0, 0, 0, 0, 0];
   $('verdict').textContent = 'Menghitung…'; $('pill').className = 'pill unc'; $('pill').textContent = '…';
   const t0 = performance.now();
   for (let i = 0; i < starts.length; i++) {
     await new Promise(r => setTimeout(r, 0));
     const x = new Float32Array(12000);
-    for (let l = 0; l < 12; l++) for (let t = 0; t < 1000; t++) x[l * 1000 + t] = (s[l][starts[i] + t] - META.mu[l]) / META.sd[l];
+    for (let l = 0; l < 12; l++) {
+      const seg = s[l].subarray(starts[i], starts[i] + 1000), med = median(seg); // buang offset DC (penting untuk data Holter)
+      for (let t = 0; t < 1000; t++) x[l * 1000 + t] = (seg[t] - med - META.mu[l]) / META.sd[l];
+    }
     forward(META, WEIGHTS, x).forEach((p, k) => acc[k] += p / starts.length);
     if (starts.length > 2) $('verdict').textContent = `Menghitung… jendela ${i + 1}/${starts.length}`;
   }
